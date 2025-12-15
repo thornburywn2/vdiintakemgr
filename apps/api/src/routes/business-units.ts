@@ -7,7 +7,12 @@ import { createBusinessUnitSchema, updateBusinessUnitSchema } from '@avdmanager/
 export async function businessUnitsRoutes(app: FastifyInstance) {
   // List all business units
   app.get('/', { preHandler: [authenticate] }, async (request, reply) => {
-    const { includeInactive, isVendor } = request.query as { includeInactive?: string; isVendor?: string };
+    const { includeInactive, isVendor, page, pageSize } = request.query as {
+      includeInactive?: string;
+      isVendor?: string;
+      page?: string;
+      pageSize?: string;
+    };
 
     const where: any = {};
     if (includeInactive !== 'true') {
@@ -17,19 +22,34 @@ export async function businessUnitsRoutes(app: FastifyInstance) {
       where.isVendor = isVendor === 'true';
     }
 
-    const businessUnits = await prisma.businessUnit.findMany({
-      where,
-      orderBy: { name: 'asc' },
-      include: {
-        _count: {
-          select: { templates: true, contacts: true },
+    const pageNum = parseInt(page || '1');
+    const pageSizeNum = parseInt(pageSize || '100');
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const [businessUnits, total] = await Promise.all([
+      prisma.businessUnit.findMany({
+        where,
+        orderBy: { name: 'asc' },
+        include: {
+          _count: {
+            select: { templates: true, contacts: true },
+          },
         },
-      },
-    });
+        skip,
+        take: pageSizeNum,
+      }),
+      prisma.businessUnit.count({ where }),
+    ]);
 
     return reply.send({
       success: true,
-      data: businessUnits,
+      data: {
+        items: businessUnits,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum,
+        totalPages: Math.ceil(total / pageSizeNum),
+      },
     });
   });
 

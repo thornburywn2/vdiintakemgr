@@ -34,7 +34,9 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/templates" element={<TemplatesPage />} />
+                  <Route path="/templates/new" element={<TemplateDetailPage />} />
                   <Route path="/templates/:id" element={<TemplateDetailPage />} />
+                  <Route path="/templates/:id/edit" element={<TemplateDetailPage />} />
                   <Route path="/applications" element={<ApplicationsPage />} />
                   <Route path="/business-units" element={<BusinessUnitsPage />} />
                   <Route path="/contacts" element={<ContactsPage />} />

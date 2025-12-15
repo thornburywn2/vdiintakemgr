@@ -115,8 +115,13 @@ model Template {
   // Business Unit & Contact
   businessUnitId      String
   businessUnit        BusinessUnit @relation(fields: [businessUnitId], references: [id])
-  contactId           String
-  contact             Contact @relation("TemplateContact", fields: [contactId], references: [id])
+  contactId           String?
+  contact             Contact? @relation("TemplateContact", fields: [contactId], references: [id])
+
+  // Freeform Contact Info (alternative to Contact relation)
+  contactName         String?
+  contactEmail        String?
+  contactTitle        String?
 
   // Naming Convention
   namingPrefix        String             // e.g., "vdpool-fin-prod"
@@ -185,6 +190,7 @@ enum TemplateStatus {
 }
 
 enum Environment {
+  PILOT
   DEVELOPMENT
   STAGING
   PRODUCTION
@@ -198,6 +204,28 @@ enum HostPoolType {
 enum LoadBalancerType {
   BREADTH_FIRST
   DEPTH_FIRST
+}
+
+// =============================================================================
+// BASE IMAGES
+// =============================================================================
+
+model BaseImage {
+  id              String   @id @default(cuid())
+  name            String   @unique   // e.g., "win11-avd-base"
+  displayName     String             // e.g., "Windows 11 AVD Base Image"
+  description     String?
+  osType          String             // e.g., "Windows 11 Enterprise 23H2"
+  version         String             // e.g., "1.0.0"
+  patchLevel      String?            // e.g., "2024-12"
+  computeGalleryId String?           // Azure Compute Gallery resource ID
+  imageDefinition String?            // Image definition name in gallery
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("base_images")
 }
 
 // =============================================================================
@@ -261,6 +289,12 @@ model TemplateApplication {
   // Installation notes for this specific template
   installNotes    String?     @db.Text
 
+  // Approval workflow
+  approvalStatus  AppApprovalStatus @default(PENDING)
+  approvalNotes   String?     @db.Text
+  approvedById    String?
+  approvedAt      DateTime?
+
   isRequired      Boolean     @default(true)  // Required vs optional app
   installOrder    Int         @default(0)     // Order of installation
 
@@ -270,6 +304,12 @@ model TemplateApplication {
   @@index([templateId])
   @@index([applicationId])
   @@map("template_applications")
+}
+
+enum AppApprovalStatus {
+  PENDING
+  APPROVED
+  DENIED
 }
 
 // =============================================================================

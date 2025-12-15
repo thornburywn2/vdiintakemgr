@@ -12,9 +12,14 @@ import {
   Users,
   Mail,
   Phone,
+  Building2,
+  Star,
+  Filter,
+  FileStack,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { Badge } from '../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import {
   Table,
@@ -57,28 +62,34 @@ interface Contact {
   phone: string | null;
   department: string | null;
   title: string | null;
-  businessUnit?: { id: string; name: string } | null;
+  isPrimary: boolean;
+  notes: string | null;
+  businessUnit?: { id: string; name: string; code: string } | null;
   _count?: { templates: number };
 }
 
 interface BusinessUnit {
   id: string;
   name: string;
+  code: string;
 }
 
 export default function ContactsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [buFilter, setBuFilter] = useState<string>('all');
+  const [primaryFilter, setPrimaryFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [editContact, setEditContact] = useState<Contact | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
 
   const { data: contactsData, isLoading } = useQuery({
-    queryKey: ['contacts', { search, page }],
+    queryKey: ['contacts', { search, businessUnit: buFilter, page }],
     queryFn: () =>
       contactsApi.list({
         search: search || undefined,
+        businessUnitId: buFilter !== 'all' ? buFilter : undefined,
         page,
         limit: 15,
       }),
@@ -143,6 +154,11 @@ export default function ContactsPage() {
   const businessUnits = ((busData?.data || []) as BusinessUnit[]);
   const pagination = contactsData?.pagination;
 
+  // Filter by primary status client-side
+  const filteredContacts = primaryFilter === 'all'
+    ? contacts
+    : contacts.filter(c => primaryFilter === 'primary' ? c.isPrimary : !c.isPrimary);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -152,6 +168,8 @@ export default function ContactsPage() {
       phone: formData.get('phone') as string || null,
       department: formData.get('department') as string || null,
       title: formData.get('title') as string || null,
+      isPrimary: formData.get('isPrimary') === 'true',
+      notes: formData.get('notes') as string || null,
       businessUnitId: formData.get('businessUnitId') as string || null,
     };
 
@@ -162,12 +180,23 @@ export default function ContactsPage() {
     }
   };
 
+  const openEditForm = (contact: Contact) => {
+    setEditContact(contact);
+    setFormOpen(true);
+  };
+
+  // Stats
+  const totalCount = pagination?.total || 0;
+  const primaryCount = contacts.filter(c => c.isPrimary).length;
+  const withBUCount = contacts.filter(c => c.businessUnit).length;
+  const totalTemplates = contacts.reduce((sum, c) => sum + (c._count?.templates || 0), 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Contacts</h1>
-          <p className="text-muted-foreground">Manage contact directory</p>
+          <p className="text-muted-foreground">Manage contact directory for templates</p>
         </div>
         <Button onClick={() => { setEditContact(null); setFormOpen(true); }}>
           <Plus className="mr-2 h-4 w-4" />
@@ -175,18 +204,98 @@ export default function ContactsPage() {
         </Button>
       </div>
 
+      {/* Stats Cards */}
+      <div className="grid gap-4 sm:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-full bg-primary/10 p-3">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Contacts</p>
+                <p className="text-2xl font-bold">{totalCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-full bg-amber-100 p-3">
+                <Star className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Primary Contacts</p>
+                <p className="text-2xl font-bold">{primaryCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-full bg-blue-100 p-3">
+                <Building2 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">With Business Unit</p>
+                <p className="text-2xl font-bold">{withBUCount}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <div className="rounded-full bg-green-100 p-3">
+                <FileStack className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">On Templates</p>
+                <p className="text-2xl font-bold">{totalTemplates}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg">All Contacts</CardTitle>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search contacts..."
-                className="pl-8 w-[250px]"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search contacts..."
+                  className="pl-8 w-[200px]"
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                />
+              </div>
+              <Select value={buFilter} onValueChange={(v) => { setBuFilter(v); setPage(1); }}>
+                <SelectTrigger className="w-[160px]">
+                  <Filter className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Business Unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Units</SelectItem>
+                  {businessUnits.map((bu) => (
+                    <SelectItem key={bu.id} value={bu.id}>{bu.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={primaryFilter} onValueChange={(v) => { setPrimaryFilter(v); setPage(1); }}>
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Roles</SelectItem>
+                  <SelectItem value="primary">Primary Only</SelectItem>
+                  <SelectItem value="secondary">Secondary</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -195,7 +304,7 @@ export default function ContactsPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : contacts.length === 0 ? (
+          ) : filteredContacts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Users className="h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">No contacts found</p>
@@ -213,39 +322,63 @@ export default function ContactsPage() {
                     <TableHead>Phone</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Business Unit</TableHead>
+                    <TableHead>Role</TableHead>
                     <TableHead>Templates</TableHead>
                     <TableHead className="w-[50px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {contacts.map((contact) => (
+                  {filteredContacts.map((contact) => (
                     <TableRow key={contact.id}>
                       <TableCell>
-                        <div>
-                          <span className="font-medium">{contact.name}</span>
-                          {contact.title && (
-                            <p className="text-xs text-muted-foreground">{contact.title}</p>
+                        <div className="flex items-center gap-2">
+                          {contact.isPrimary && (
+                            <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
                           )}
+                          <div>
+                            <span className="font-medium">{contact.name}</span>
+                            {contact.title && (
+                              <p className="text-xs text-muted-foreground">{contact.title}</p>
+                            )}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <a href={`mailto:${contact.email}`} className="flex items-center gap-1 hover:underline">
+                        <a href={`mailto:${contact.email}`} className="flex items-center gap-1 hover:underline text-sm">
                           <Mail className="h-3 w-3" />
                           {contact.email}
                         </a>
                       </TableCell>
                       <TableCell>
                         {contact.phone ? (
-                          <a href={`tel:${contact.phone}`} className="flex items-center gap-1 hover:underline">
+                          <a href={`tel:${contact.phone}`} className="flex items-center gap-1 hover:underline text-sm">
                             <Phone className="h-3 w-3" />
                             {contact.phone}
                           </a>
                         ) : (
-                          '-'
+                          <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
                       <TableCell>{contact.department || '-'}</TableCell>
-                      <TableCell>{contact.businessUnit?.name || '-'}</TableCell>
+                      <TableCell>
+                        {contact.businessUnit ? (
+                          <Badge variant="outline">
+                            {contact.businessUnit.name}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {contact.isPrimary ? (
+                          <Badge className="bg-amber-100 text-amber-800">
+                            <Star className="mr-1 h-3 w-3" />
+                            Primary
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">Secondary</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{contact._count?.templates ?? 0}</TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -255,7 +388,7 @@ export default function ContactsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => { setEditContact(contact); setFormOpen(true); }}>
+                            <DropdownMenuItem onClick={() => openEditForm(contact)}>
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
@@ -299,7 +432,7 @@ export default function ContactsPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editContact ? 'Edit Contact' : 'Add Contact'}</DialogTitle>
             <DialogDescription>
@@ -307,29 +440,33 @@ export default function ContactsPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name *</Label>
-              <Input id="name" name="name" defaultValue={editContact?.name} required />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
-              <Input id="email" name="email" type="email" defaultValue={editContact?.email} required />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 col-span-2">
+                <Label htmlFor="name">Name *</Label>
+                <Input id="name" name="name" defaultValue={editContact?.name} required placeholder="Full name" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input id="email" name="email" type="email" defaultValue={editContact?.email} required placeholder="email@company.com" />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phone" defaultValue={editContact?.phone || ''} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input id="title" name="title" defaultValue={editContact?.title || ''} />
+                <Input id="phone" name="phone" defaultValue={editContact?.phone || ''} placeholder="+1 (555) 123-4567" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="department">Department</Label>
-                <Input id="department" name="department" defaultValue={editContact?.department || ''} />
+                <Label htmlFor="title">Title</Label>
+                <Input id="title" name="title" defaultValue={editContact?.title || ''} placeholder="e.g., IT Manager" />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="department">Department</Label>
+                <Input id="department" name="department" defaultValue={editContact?.department || ''} placeholder="e.g., Information Technology" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="businessUnitId">Business Unit</Label>
                 <Select name="businessUnitId" defaultValue={editContact?.businessUnit?.id || ''}>
@@ -339,11 +476,27 @@ export default function ContactsPage() {
                   <SelectContent>
                     <SelectItem value="">None</SelectItem>
                     {businessUnits.map((bu) => (
-                      <SelectItem key={bu.id} value={bu.id}>{bu.name}</SelectItem>
+                      <SelectItem key={bu.id} value={bu.id}>{bu.name} ({bu.code})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="isPrimary">Contact Role</Label>
+                <Select name="isPrimary" defaultValue={editContact?.isPrimary ? 'true' : 'false'}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="false">Secondary Contact</SelectItem>
+                    <SelectItem value="true">Primary Contact</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <Input id="notes" name="notes" defaultValue={editContact?.notes || ''} placeholder="Additional notes about this contact..." />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
@@ -366,7 +519,7 @@ export default function ContactsPage() {
           <DialogHeader>
             <DialogTitle>Delete Contact</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this contact? This action cannot be undone.
+              Are you sure you want to delete this contact? This may affect templates that reference this contact.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -94,9 +94,10 @@ export const updateApplicationSchema = createApplicationSchema.partial();
 // =============================================================================
 
 export const templateStatusEnum = z.enum(['DRAFT', 'IN_REVIEW', 'APPROVED', 'DEPLOYED', 'DEPRECATED']);
-export const environmentEnum = z.enum(['DEVELOPMENT', 'STAGING', 'PRODUCTION']);
+export const environmentEnum = z.enum(['PILOT', 'DEVELOPMENT', 'STAGING', 'PRODUCTION']);
 export const hostPoolTypeEnum = z.enum(['POOLED', 'PERSONAL']);
 export const loadBalancerTypeEnum = z.enum(['BREADTH_FIRST', 'DEPTH_FIRST']);
+export const appApprovalStatusEnum = z.enum(['PENDING', 'APPROVED', 'DENIED']);
 
 export const azureTagsSchema = z.record(z.string(), z.string()).optional().nullable();
 
@@ -106,7 +107,12 @@ export const createTemplateSchema = z.object({
 
   // Business Unit & Contact
   businessUnitId: z.string().cuid('Invalid business unit'),
-  contactId: z.string().cuid('Invalid contact'),
+  contactId: z.string().cuid('Invalid contact').optional().nullable(),
+
+  // Freeform Contact Info (optional - used instead of contactId)
+  contactName: z.string().max(100).optional().nullable(),
+  contactEmail: z.string().email('Invalid email address').max(200).optional().nullable(),
+  contactTitle: z.string().max(100).optional().nullable(),
 
   // Naming Convention
   namingPrefix: z.string()
@@ -114,7 +120,7 @@ export const createTemplateSchema = z.object({
     .max(50)
     .regex(/^[a-z0-9-]+$/, 'Prefix must be lowercase letters, numbers, and hyphens'),
   namingPattern: z.string().max(100).optional().nullable(),
-  environment: environmentEnum.default('PRODUCTION'),
+  environment: environmentEnum.default('PILOT'),
 
   // Host Pool Configuration
   hostPoolType: hostPoolTypeEnum.default('POOLED'),
@@ -126,21 +132,8 @@ export const createTemplateSchema = z.object({
   regions: z.array(z.string()).min(1, 'At least one region is required'),
   primaryRegion: z.string().min(1, 'Primary region is required'),
 
-  // Image Details
-  goldenImageName: z.string().max(200).optional().nullable(),
-  baseOS: z.string().max(100).optional().nullable(),
-  imageVersion: z.string().max(50).optional().nullable(),
-  patchLevel: z.string().max(20).optional().nullable(),
-  lastSysprepDate: z.string().datetime().optional().nullable(),
-  computeGalleryId: z.string().max(500).optional().nullable(),
-  imageDefinition: z.string().max(200).optional().nullable(),
-
-  // ARM Resource IDs
-  subscriptionId: z.string().uuid().optional().nullable(),
-  resourceGroup: z.string().max(90).optional().nullable(),
-  hostPoolId: z.string().max(500).optional().nullable(),
-  workspaceId: z.string().max(500).optional().nullable(),
-  appGroupId: z.string().max(500).optional().nullable(),
+  // Base Image
+  baseImageId: z.string().cuid('Invalid base image').optional().nullable(),
 
   // Tags & Notes
   tags: azureTagsSchema,
@@ -162,6 +155,8 @@ export const addTemplateApplicationSchema = z.object({
   applicationId: z.string().cuid('Invalid application'),
   versionOverride: z.string().max(50).optional().nullable(),
   installNotes: z.string().max(2000).optional().nullable(),
+  approvalStatus: appApprovalStatusEnum.default('PENDING'),
+  approvalNotes: z.string().max(2000).optional().nullable(),
   isRequired: z.boolean().default(true),
   installOrder: z.number().int().min(0).default(0),
 });

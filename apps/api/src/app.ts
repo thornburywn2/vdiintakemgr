@@ -13,6 +13,7 @@ import { businessUnitsRoutes } from './routes/business-units.js';
 import { contactsRoutes } from './routes/contacts.js';
 import { auditRoutes } from './routes/audit.js';
 import { exportRoutes } from './routes/export.js';
+import { baseImagesRoutes } from './routes/base-images.js';
 
 export async function createApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -70,6 +71,7 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(contactsRoutes, { prefix: '/api/contacts' });
   await app.register(auditRoutes, { prefix: '/api/audit' });
   await app.register(exportRoutes, { prefix: '/api/export' });
+  await app.register(baseImagesRoutes, { prefix: '/api/base-images' });
 
   // Global error handler
   app.setErrorHandler((error, request, reply) => {

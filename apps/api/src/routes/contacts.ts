@@ -7,7 +7,12 @@ import { createContactSchema, updateContactSchema } from '@avdmanager/shared';
 export async function contactsRoutes(app: FastifyInstance) {
   // List all contacts
   app.get('/', { preHandler: [authenticate] }, async (request, reply) => {
-    const { businessUnitId, search } = request.query as { businessUnitId?: string; search?: string };
+    const { businessUnitId, search, page, pageSize } = request.query as {
+      businessUnitId?: string;
+      search?: string;
+      page?: string;
+      pageSize?: string;
+    };
 
     const where: any = {};
     if (businessUnitId) where.businessUnitId = businessUnitId;
@@ -19,18 +24,33 @@ export async function contactsRoutes(app: FastifyInstance) {
       ];
     }
 
-    const contacts = await prisma.contact.findMany({
-      where,
-      orderBy: [{ isPrimary: 'desc' }, { name: 'asc' }],
-      include: {
-        businessUnit: { select: { id: true, name: true, code: true } },
-        _count: { select: { templates: true } },
-      },
-    });
+    const pageNum = parseInt(page || '1');
+    const pageSizeNum = parseInt(pageSize || '100');
+    const skip = (pageNum - 1) * pageSizeNum;
+
+    const [contacts, total] = await Promise.all([
+      prisma.contact.findMany({
+        where,
+        orderBy: [{ isPrimary: 'desc' }, { name: 'asc' }],
+        include: {
+          businessUnit: { select: { id: true, name: true, code: true } },
+          _count: { select: { templates: true } },
+        },
+        skip,
+        take: pageSizeNum,
+      }),
+      prisma.contact.count({ where }),
+    ]);
 
     return reply.send({
       success: true,
-      data: contacts,
+      data: {
+        items: contacts,
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum,
+        totalPages: Math.ceil(total / pageSizeNum),
+      },
     });
   });
 

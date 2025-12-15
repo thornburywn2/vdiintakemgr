@@ -455,7 +455,7 @@ export const auditApi = {
     if (params?.startDate) searchParams.set('startDate', params.startDate);
     if (params?.endDate) searchParams.set('endDate', params.endDate);
     const query = searchParams.toString();
-    const response = await api.get<PaginatedApiResponse<unknown>>(`/audit${query ? `?${query}` : ''}`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/audit/logs${query ? `?${query}` : ''}`);
     if (!response.success || !response.data) {
       throw new Error(response.error || 'Failed to get audit logs');
     }
@@ -475,4 +475,31 @@ export const auditApi = {
 export const exportApi = {
   templatesCSV: () => api.get<Blob>('/export/templates/csv'),
   templatesJSON: () => api.get<unknown[]>('/export/templates/json'),
+};
+
+// Base Images API
+export const baseImagesApi = {
+  list: async () => {
+    const response = await api.get<ApiResponse<{
+      id: string;
+      name: string;
+      displayName: string;
+      description: string | null;
+      osType: string;
+      version: string;
+      patchLevel: string | null;
+      isActive: boolean;
+    }[]>>('/base-images');
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get base images');
+    }
+    return response.data;
+  },
+  get: async (id: string) => {
+    const response = await api.get<ApiResponse<unknown>>(`/base-images/${id}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get base image');
+    }
+    return response.data;
+  },
 };
