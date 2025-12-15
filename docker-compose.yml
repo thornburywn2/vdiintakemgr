@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: avdmanager-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: avdmanager
+      POSTGRES_PASSWORD: avdmanager
+      POSTGRES_DB: avdmanager
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avdmanager -d avdmanager"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

@@ -1,0 +1,340 @@
+// =============================================================================
+// AVD Template Management Portal - Database Schema
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// AUTHENTICATION
+// =============================================================================
+
+model AdminUser {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sessions          Session[]
+  auditLogs         AuditLog[]
+  createdTemplates  Template[] @relation("CreatedTemplates")
+  updatedTemplates  Template[] @relation("UpdatedTemplates")
+
+  @@map("admin_users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// =============================================================================
+// BUSINESS UNITS & CONTACTS
+// =============================================================================
+
+model BusinessUnit {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  code          String   @unique   // e.g., "FIN", "HR", "IT", "VENDOR-ACME"
+  description   String?
+  isVendor      Boolean  @default(false)
+  vendorCompany String?            // For vendor business units
+  costCenter    String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  templates     Template[]
+  contacts      Contact[]
+
+  @@index([code])
+  @@index([isVendor])
+  @@index([isActive])
+  @@map("business_units")
+}
+
+model Contact {
+  id              String       @id @default(cuid())
+  name            String
+  email           String
+  title           String?
+  department      String?
+  phone           String?
+  isPrimary       Boolean      @default(false)
+  businessUnitId  String
+  businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  templates       Template[]   @relation("TemplateContact")
+
+  @@unique([email, businessUnitId])
+  @@index([businessUnitId])
+  @@index([email])
+  @@map("contacts")
+}
+
+// =============================================================================
+// AVD TEMPLATES
+// =============================================================================
+
+model Template {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String?  @db.Text
+
+  // Status & Workflow
+  status              TemplateStatus @default(DRAFT)
+  requestDate         DateTime @default(now())
+  lastModifiedDate    DateTime @updatedAt
+  approvedDate        DateTime?
+  deployedDate        DateTime?
+  deprecatedDate      DateTime?
+
+  // Business Unit & Contact
+  businessUnitId      String
+  businessUnit        BusinessUnit @relation(fields: [businessUnitId], references: [id])
+  contactId           String
+  contact             Contact @relation("TemplateContact", fields: [contactId], references: [id])
+
+  // Naming Convention
+  namingPrefix        String             // e.g., "vdpool-fin-prod"
+  namingPattern       String?            // e.g., "{prefix}-{region}-{seq}"
+  environment         Environment        @default(PRODUCTION)
+
+  // Host Pool Configuration
+  hostPoolType        HostPoolType       @default(POOLED)
+  maxSessionLimit     Int?               @default(10)
+  loadBalancerType    LoadBalancerType   @default(BREADTH_FIRST)
+  validationEnvEnabled Boolean           @default(false)
+
+  // Azure Regions (stored as JSON array)
+  regions             String[]           // e.g., ["eastus", "westus2"]
+  primaryRegion       String             // Primary region for host pool
+
+  // Image Details
+  goldenImageName     String?
+  baseOS              String?            // e.g., "Windows 11 Enterprise 23H2 Multi-session"
+  imageVersion        String?            // e.g., "1.0.0"
+  patchLevel          String?            // e.g., "2024-12"
+  lastSysprepDate     DateTime?
+  computeGalleryId    String?            // Azure Compute Gallery resource ID
+  imageDefinition     String?            // Image definition name in gallery
+
+  // ARM Resource IDs
+  subscriptionId      String?
+  resourceGroup       String?
+  hostPoolId          String?            // Full ARM resource ID when deployed
+  workspaceId         String?            // AVD Workspace ARM ID
+  appGroupId          String?            // Desktop App Group ARM ID
+
+  // Tags (stored as JSON)
+  tags                Json?              // Azure resource tags
+
+  // Notes (Markdown)
+  notes               String?            @db.Text
+
+  // Audit
+  createdById         String
+  createdBy           AdminUser @relation("CreatedTemplates", fields: [createdById], references: [id])
+  updatedById         String?
+  updatedBy           AdminUser? @relation("UpdatedTemplates", fields: [updatedById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  applications        TemplateApplication[]
+  history             TemplateHistory[]
+
+  @@index([status])
+  @@index([businessUnitId])
+  @@index([contactId])
+  @@index([environment])
+  @@index([primaryRegion])
+  @@index([createdAt])
+  @@map("templates")
+}
+
+enum TemplateStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  DEPLOYED
+  DEPRECATED
+}
+
+enum Environment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum HostPoolType {
+  POOLED
+  PERSONAL
+}
+
+enum LoadBalancerType {
+  BREADTH_FIRST
+  DEPTH_FIRST
+}
+
+// =============================================================================
+// APPLICATIONS
+// =============================================================================
+
+model Application {
+  id                String   @id @default(cuid())
+  name              String   @unique   // Internal identifier
+  displayName       String             // Display name
+  version           String?
+  publisher         String?
+  description       String?  @db.Text
+
+  // MSIX App Attach
+  isMsixAppAttach   Boolean  @default(false)
+  msixPackagePath   String?            // Azure Files or blob storage path
+  msixImagePath     String?            // VHD/VHDX path
+  msixCertificate   String?            // Certificate thumbprint
+
+  // Licensing
+  licenseRequired   Boolean  @default(false)
+  licenseType       String?            // e.g., "Per User", "Per Device", "Enterprise", "M365"
+  licenseVendor     String?
+  licenseSku        String?
+  licenseCost       Float?             // Optional cost tracking
+  licenseNotes      String?  @db.Text
+
+  // Categorization
+  category          String?            // e.g., "Productivity", "Development", "Security"
+
+  // Installation
+  installCommand    String?            // Silent install command
+  uninstallCommand  String?            // Uninstall command
+  installSize       String?            // Approximate disk size
+
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  templates         TemplateApplication[]
+
+  @@index([name])
+  @@index([category])
+  @@index([isMsixAppAttach])
+  @@index([isActive])
+  @@map("applications")
+}
+
+// Junction table for Template <-> Application (many-to-many)
+model TemplateApplication {
+  id              String      @id @default(cuid())
+  templateId      String
+  template        Template    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  applicationId   String
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Override version for this template
+  versionOverride String?
+
+  // Installation notes for this specific template
+  installNotes    String?     @db.Text
+
+  isRequired      Boolean     @default(true)  // Required vs optional app
+  installOrder    Int         @default(0)     // Order of installation
+
+  createdAt       DateTime    @default(now())
+
+  @@unique([templateId, applicationId])
+  @@index([templateId])
+  @@index([applicationId])
+  @@map("template_applications")
+}
+
+// =============================================================================
+// HISTORY & AUDIT
+// =============================================================================
+
+model TemplateHistory {
+  id          String         @id @default(cuid())
+  templateId  String
+  template    Template       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  action      String                    // "CREATED", "UPDATED", "STATUS_CHANGED", "APP_ADDED", "APP_REMOVED"
+  oldStatus   TemplateStatus?
+  newStatus   TemplateStatus?
+  changes     Json?                     // Detailed change record
+  comment     String?        @db.Text
+
+  userId      String
+  userName    String?
+  createdAt   DateTime       @default(now())
+
+  @@index([templateId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("template_history")
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  adminId     String
+  admin       AdminUser @relation(fields: [adminId], references: [id])
+  action      String
+  entityType  String?
+  entityId    String?
+  entityName  String?
+  details     Json?
+  oldValue    Json?
+  newValue    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// SYSTEM CONFIGURATION
+// =============================================================================
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       Json
+  category    String?
+  description String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([key])
+  @@map("system_config")
+}
