@@ -166,7 +166,7 @@ export default function DashboardPage() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm">
                         <span className="font-medium">{activity.user?.name || 'System'}</span>{' '}
-                        {activity.action.toLowerCase()}d a {activity.entityType.toLowerCase()}
+                        {activity.action?.toLowerCase() || 'performed'}d {activity.entityType ? `a ${activity.entityType.toLowerCase()}` : 'an action'}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {formatDateTime(activity.createdAt)}
