@@ -16,6 +16,7 @@ import {
   FileText,
   Tag,
   Clock,
+  History,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -89,6 +90,7 @@ const tabs = [
   { id: 'image', label: 'Image', icon: Server },
   { id: 'arm', label: 'ARM Resources', icon: Tag },
   { id: 'notes', label: 'Notes', icon: FileText },
+  { id: 'history', label: 'History', icon: History },
 ];
 
 const statusTransitions: Record<string, string[]> = {
@@ -276,6 +278,7 @@ export default function TemplateDetailPage() {
       {activeTab === 'image' && <ImageTab template={t} />}
       {activeTab === 'arm' && <ARMTab template={t} />}
       {activeTab === 'notes' && <NotesTab template={t} />}
+      {activeTab === 'history' && <HistoryTab templateId={id!} />}
 
       {/* Delete Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -564,6 +567,155 @@ function NotesTab({ template: t }: { template: Template }) {
           </div>
         ) : (
           <p className="text-center py-8 text-muted-foreground">No notes added</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface HistoryEntry {
+  id: string;
+  templateId: string;
+  action: string;
+  oldStatus: string | null;
+  newStatus: string | null;
+  changes: Record<string, unknown> | null;
+  comment: string | null;
+  userId: string;
+  userName: string | null;
+  createdAt: string;
+}
+
+function HistoryTab({ templateId }: { templateId: string }) {
+  const { data: history, isLoading, error } = useQuery({
+    queryKey: ['template-history', templateId],
+    queryFn: () => templatesApi.getHistory(templateId),
+  });
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <p className="text-muted-foreground">Failed to load history</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const entries = (history as HistoryEntry[]) || [];
+
+  const getActionLabel = (action: string) => {
+    switch (action) {
+      case 'CREATED': return 'Template Created';
+      case 'UPDATED': return 'Template Updated';
+      case 'STATUS_CHANGED': return 'Status Changed';
+      case 'APP_ADDED': return 'Application Added';
+      case 'APP_REMOVED': return 'Application Removed';
+      default: return action;
+    }
+  };
+
+  const getActionColor = (action: string) => {
+    switch (action) {
+      case 'CREATED': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+      case 'UPDATED': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'STATUS_CHANGED': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
+      case 'APP_ADDED': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200';
+      case 'APP_REMOVED': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Request Journal</CardTitle>
+        <CardDescription>Complete history of all changes to this template</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {entries.length === 0 ? (
+          <p className="text-center py-8 text-muted-foreground">No history entries</p>
+        ) : (
+          <div className="relative">
+            {/* Timeline line */}
+            <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+
+            <div className="space-y-6">
+              {entries.map((entry, index) => (
+                <div key={entry.id} className="relative pl-10">
+                  {/* Timeline dot */}
+                  <div className={cn(
+                    "absolute left-2 w-5 h-5 rounded-full border-2 border-background flex items-center justify-center",
+                    index === 0 ? "bg-primary" : "bg-muted"
+                  )}>
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      index === 0 ? "bg-primary-foreground" : "bg-muted-foreground"
+                    )} />
+                  </div>
+
+                  <div className="rounded-lg border p-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <Badge className={getActionColor(entry.action)} variant="secondary">
+                        {getActionLabel(entry.action)}
+                      </Badge>
+                      {entry.oldStatus && entry.newStatus && (
+                        <span className="text-sm text-muted-foreground">
+                          {entry.oldStatus.replace('_', ' ')} → {entry.newStatus.replace('_', ' ')}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground mb-2">
+                      <div className="flex items-center gap-1">
+                        <User className="h-4 w-4" />
+                        <span>{entry.userName || 'System'}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        <span>{formatDateTime(entry.createdAt)}</span>
+                      </div>
+                    </div>
+
+                    {entry.comment && (
+                      <p className="text-sm border-l-2 pl-3 mt-2 text-muted-foreground italic">
+                        "{entry.comment}"
+                      </p>
+                    )}
+
+                    {entry.changes && Object.keys(entry.changes).length > 0 && (
+                      <div className="mt-3 pt-3 border-t">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">Changes:</p>
+                        <div className="grid gap-1 text-xs">
+                          {Object.entries(entry.changes).slice(0, 5).map(([key, value]) => (
+                            <div key={key} className="flex gap-2">
+                              <span className="font-medium text-muted-foreground">{key}:</span>
+                              <span className="truncate">{String(value)}</span>
+                            </div>
+                          ))}
+                          {Object.keys(entry.changes).length > 5 && (
+                            <p className="text-muted-foreground">
+                              +{Object.keys(entry.changes).length - 5} more fields
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

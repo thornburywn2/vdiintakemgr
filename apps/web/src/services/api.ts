@@ -190,6 +190,27 @@ export const templatesApi = {
     api.delete<void>(`/templates/${templateId}/applications/${applicationId}`),
   reorderApplications: (templateId: string, applicationIds: string[]) =>
     api.patch<void>(`/templates/${templateId}/applications/reorder`, { applicationIds }),
+  getHistory: async (templateId: string) => {
+    const response = await api.get<{
+      success: boolean;
+      data?: {
+        id: string;
+        templateId: string;
+        action: string;
+        oldStatus: string | null;
+        newStatus: string | null;
+        changes: Record<string, unknown> | null;
+        comment: string | null;
+        userId: string;
+        userName: string | null;
+        createdAt: string;
+      }[];
+    }>(`/templates/${templateId}/history`);
+    if (!response.success || !response.data) {
+      throw new Error('Failed to get template history');
+    }
+    return response.data;
+  },
 };
 
 // Applications API
