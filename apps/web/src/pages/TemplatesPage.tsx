@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
+  X,
+  Building2,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -70,16 +72,18 @@ export default function TemplatesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [environmentFilter, setEnvironmentFilter] = useState<string>('all');
+  const [businessUnitFilter, setBusinessUnitFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: templatesData, isLoading } = useQuery({
-    queryKey: ['templates', { search, status: statusFilter, environment: environmentFilter, page }],
+    queryKey: ['templates', { search, status: statusFilter, environment: environmentFilter, businessUnitId: businessUnitFilter, page }],
     queryFn: () =>
       templatesApi.list({
         search: search || undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
         environment: environmentFilter !== 'all' ? environmentFilter : undefined,
+        businessUnitId: businessUnitFilter !== 'all' ? businessUnitFilter : undefined,
         page,
         limit: 10,
       }),
@@ -194,8 +198,85 @@ export default function TemplatesPage() {
                   <SelectItem value="PRODUCTION">Production</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={businessUnitFilter}
+                onValueChange={(v) => {
+                  setBusinessUnitFilter(v);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <Building2 className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Business Unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Business Units</SelectItem>
+                  {(businessUnitsData?.data as { id: string; name: string; code: string }[] || []).map((bu) => (
+                    <SelectItem key={bu.id} value={bu.id}>
+                      {bu.name} ({bu.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {(statusFilter !== 'all' || environmentFilter !== 'all' || businessUnitFilter !== 'all' || search) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter('all');
+                    setEnvironmentFilter('all');
+                    setBusinessUnitFilter('all');
+                    setPage(1);
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <X className="mr-1 h-4 w-4" />
+                  Clear filters
+                </Button>
+              )}
             </div>
           </div>
+
+          {/* Active Filters Display */}
+          {(statusFilter !== 'all' || environmentFilter !== 'all' || businessUnitFilter !== 'all') && (
+            <div className="flex flex-wrap items-center gap-2 mt-4">
+              <span className="text-sm text-muted-foreground">Active filters:</span>
+              {statusFilter !== 'all' && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  Status: {statusFilter.replace('_', ' ')}
+                  <button
+                    onClick={() => { setStatusFilter('all'); setPage(1); }}
+                    className="ml-1 hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {environmentFilter !== 'all' && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  Environment: {environmentFilter}
+                  <button
+                    onClick={() => { setEnvironmentFilter('all'); setPage(1); }}
+                    className="ml-1 hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {businessUnitFilter !== 'all' && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  Business Unit: {(businessUnitsData?.data as { id: string; name: string }[] || []).find(bu => bu.id === businessUnitFilter)?.name || businessUnitFilter}
+                  <button
+                    onClick={() => { setBusinessUnitFilter('all'); setPage(1); }}
+                    className="ml-1 hover:text-destructive"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
