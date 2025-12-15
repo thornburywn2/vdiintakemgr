@@ -83,6 +83,19 @@ interface ApiResponse<T> {
   message?: string;
 }
 
+// Paginated response from API
+interface PaginatedApiResponse<T> {
+  success: boolean;
+  data?: {
+    items: T[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  };
+  error?: string;
+}
+
 // Auth API
 export const authApi = {
   login: async (email: string, password: string) => {
@@ -141,8 +154,8 @@ export const dashboardApi = {
     const response = await api.get<ApiResponse<{
       id: string;
       action: string;
-      entityType: string;
-      entityId: string;
+      entityType: string | null;
+      entityId: string | null;
       details: unknown;
       createdAt: string;
       user: { name: string } | null;
@@ -156,7 +169,7 @@ export const dashboardApi = {
 
 // Templates API
 export const templatesApi = {
-  list: (params?: {
+  list: async (params?: {
     page?: number;
     limit?: number;
     search?: string;
@@ -166,48 +179,101 @@ export const templatesApi = {
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.limit) searchParams.set('pageSize', params.limit.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.status) searchParams.set('status', params.status);
     if (params?.environment) searchParams.set('environment', params.environment);
     if (params?.businessUnitId) searchParams.set('businessUnitId', params.businessUnitId);
     const query = searchParams.toString();
-    return api.get<{
-      data: unknown[];
-      pagination: { total: number; page: number; limit: number; totalPages: number };
-    }>(`/templates${query ? `?${query}` : ''}`);
-  },
-  get: (id: string) => api.get<unknown>(`/templates/${id}`),
-  create: (data: unknown) => api.post<unknown>('/templates', data),
-  update: (id: string, data: unknown) => api.put<unknown>(`/templates/${id}`, data),
-  delete: (id: string) => api.delete<void>(`/templates/${id}`),
-  updateStatus: (id: string, status: string) =>
-    api.patch<unknown>(`/templates/${id}/status`, { status }),
-  duplicate: (id: string) => api.post<unknown>(`/templates/${id}/duplicate`),
-  addApplication: (templateId: string, data: unknown) =>
-    api.post<unknown>(`/templates/${templateId}/applications`, data),
-  removeApplication: (templateId: string, applicationId: string) =>
-    api.delete<void>(`/templates/${templateId}/applications/${applicationId}`),
-  reorderApplications: (templateId: string, applicationIds: string[]) =>
-    api.patch<void>(`/templates/${templateId}/applications/reorder`, { applicationIds }),
-  getHistory: async (templateId: string) => {
-    const response = await api.get<{
-      success: boolean;
-      data?: {
-        id: string;
-        templateId: string;
-        action: string;
-        oldStatus: string | null;
-        newStatus: string | null;
-        changes: Record<string, unknown> | null;
-        comment: string | null;
-        userId: string;
-        userName: string | null;
-        createdAt: string;
-      }[];
-    }>(`/templates/${templateId}/history`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/templates${query ? `?${query}` : ''}`);
     if (!response.success || !response.data) {
-      throw new Error('Failed to get template history');
+      throw new Error(response.error || 'Failed to get templates');
+    }
+    return {
+      data: response.data.items,
+      pagination: {
+        total: response.data.total,
+        page: response.data.page,
+        limit: response.data.pageSize,
+        totalPages: response.data.totalPages,
+      },
+    };
+  },
+  get: async (id: string) => {
+    const response = await api.get<ApiResponse<unknown>>(`/templates/${id}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get template');
+    }
+    return response.data;
+  },
+  create: async (data: unknown) => {
+    const response = await api.post<ApiResponse<unknown>>('/templates', data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to create template');
+    }
+    return response.data;
+  },
+  update: async (id: string, data: unknown) => {
+    const response = await api.put<ApiResponse<unknown>>(`/templates/${id}`, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to update template');
+    }
+    return response.data;
+  },
+  delete: async (id: string) => {
+    const response = await api.delete<ApiResponse<void>>(`/templates/${id}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete template');
+    }
+  },
+  updateStatus: async (id: string, status: string) => {
+    const response = await api.patch<ApiResponse<unknown>>(`/templates/${id}/status`, { status });
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to update status');
+    }
+    return response.data;
+  },
+  duplicate: async (id: string) => {
+    const response = await api.post<ApiResponse<{ id: string }>>(`/templates/${id}/duplicate`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to duplicate template');
+    }
+    return response.data;
+  },
+  addApplication: async (templateId: string, data: unknown) => {
+    const response = await api.post<ApiResponse<unknown>>(`/templates/${templateId}/applications`, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to add application');
+    }
+    return response.data;
+  },
+  removeApplication: async (templateId: string, applicationId: string) => {
+    const response = await api.delete<ApiResponse<void>>(`/templates/${templateId}/applications/${applicationId}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to remove application');
+    }
+  },
+  reorderApplications: async (templateId: string, applicationIds: string[]) => {
+    const response = await api.patch<ApiResponse<void>>(`/templates/${templateId}/applications/reorder`, { applicationIds });
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to reorder applications');
+    }
+  },
+  getHistory: async (templateId: string) => {
+    const response = await api.get<ApiResponse<{
+      id: string;
+      templateId: string;
+      action: string;
+      oldStatus: string | null;
+      newStatus: string | null;
+      changes: Record<string, unknown> | null;
+      comment: string | null;
+      userId: string;
+      userName: string | null;
+      createdAt: string;
+    }[]>>(`/templates/${templateId}/history`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get template history');
     }
     return response.data;
   },
@@ -215,67 +281,163 @@ export const templatesApi = {
 
 // Applications API
 export const applicationsApi = {
-  list: (params?: { page?: number; limit?: number; search?: string; category?: string }) => {
+  list: async (params?: { page?: number; limit?: number; search?: string; category?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.limit) searchParams.set('pageSize', params.limit.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.category) searchParams.set('category', params.category);
     const query = searchParams.toString();
-    return api.get<{
-      data: unknown[];
-      pagination: { total: number; page: number; limit: number; totalPages: number };
-    }>(`/applications${query ? `?${query}` : ''}`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/applications${query ? `?${query}` : ''}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get applications');
+    }
+    return {
+      data: response.data.items,
+      pagination: {
+        total: response.data.total,
+        page: response.data.page,
+        limit: response.data.pageSize,
+        totalPages: response.data.totalPages,
+      },
+    };
   },
-  get: (id: string) => api.get<unknown>(`/applications/${id}`),
-  create: (data: unknown) => api.post<unknown>('/applications', data),
-  update: (id: string, data: unknown) => api.put<unknown>(`/applications/${id}`, data),
-  delete: (id: string) => api.delete<void>(`/applications/${id}`),
+  get: async (id: string) => {
+    const response = await api.get<ApiResponse<unknown>>(`/applications/${id}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get application');
+    }
+    return response.data;
+  },
+  create: async (data: unknown) => {
+    const response = await api.post<ApiResponse<unknown>>('/applications', data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to create application');
+    }
+    return response.data;
+  },
+  update: async (id: string, data: unknown) => {
+    const response = await api.put<ApiResponse<unknown>>(`/applications/${id}`, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to update application');
+    }
+    return response.data;
+  },
+  delete: async (id: string) => {
+    const response = await api.delete<ApiResponse<void>>(`/applications/${id}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete application');
+    }
+  },
 };
 
 // Business Units API
 export const businessUnitsApi = {
-  list: (params?: { page?: number; limit?: number; search?: string; isVendor?: boolean }) => {
+  list: async (params?: { page?: number; limit?: number; search?: string; isVendor?: boolean }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.limit) searchParams.set('pageSize', params.limit.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.isVendor !== undefined) searchParams.set('isVendor', params.isVendor.toString());
     const query = searchParams.toString();
-    return api.get<{
-      data: unknown[];
-      pagination: { total: number; page: number; limit: number; totalPages: number };
-    }>(`/business-units${query ? `?${query}` : ''}`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/business-units${query ? `?${query}` : ''}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get business units');
+    }
+    return {
+      data: response.data.items,
+      pagination: {
+        total: response.data.total,
+        page: response.data.page,
+        limit: response.data.pageSize,
+        totalPages: response.data.totalPages,
+      },
+    };
   },
-  get: (id: string) => api.get<unknown>(`/business-units/${id}`),
-  create: (data: unknown) => api.post<unknown>('/business-units', data),
-  update: (id: string, data: unknown) => api.put<unknown>(`/business-units/${id}`, data),
-  delete: (id: string) => api.delete<void>(`/business-units/${id}`),
+  get: async (id: string) => {
+    const response = await api.get<ApiResponse<unknown>>(`/business-units/${id}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get business unit');
+    }
+    return response.data;
+  },
+  create: async (data: unknown) => {
+    const response = await api.post<ApiResponse<unknown>>('/business-units', data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to create business unit');
+    }
+    return response.data;
+  },
+  update: async (id: string, data: unknown) => {
+    const response = await api.put<ApiResponse<unknown>>(`/business-units/${id}`, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to update business unit');
+    }
+    return response.data;
+  },
+  delete: async (id: string) => {
+    const response = await api.delete<ApiResponse<void>>(`/business-units/${id}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete business unit');
+    }
+  },
 };
 
 // Contacts API
 export const contactsApi = {
-  list: (params?: { page?: number; limit?: number; search?: string; businessUnitId?: string }) => {
+  list: async (params?: { page?: number; limit?: number; search?: string; businessUnitId?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.limit) searchParams.set('pageSize', params.limit.toString());
     if (params?.search) searchParams.set('search', params.search);
     if (params?.businessUnitId) searchParams.set('businessUnitId', params.businessUnitId);
     const query = searchParams.toString();
-    return api.get<{
-      data: unknown[];
-      pagination: { total: number; page: number; limit: number; totalPages: number };
-    }>(`/contacts${query ? `?${query}` : ''}`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/contacts${query ? `?${query}` : ''}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get contacts');
+    }
+    return {
+      data: response.data.items,
+      pagination: {
+        total: response.data.total,
+        page: response.data.page,
+        limit: response.data.pageSize,
+        totalPages: response.data.totalPages,
+      },
+    };
   },
-  get: (id: string) => api.get<unknown>(`/contacts/${id}`),
-  create: (data: unknown) => api.post<unknown>('/contacts', data),
-  update: (id: string, data: unknown) => api.put<unknown>(`/contacts/${id}`, data),
-  delete: (id: string) => api.delete<void>(`/contacts/${id}`),
+  get: async (id: string) => {
+    const response = await api.get<ApiResponse<unknown>>(`/contacts/${id}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get contact');
+    }
+    return response.data;
+  },
+  create: async (data: unknown) => {
+    const response = await api.post<ApiResponse<unknown>>('/contacts', data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to create contact');
+    }
+    return response.data;
+  },
+  update: async (id: string, data: unknown) => {
+    const response = await api.put<ApiResponse<unknown>>(`/contacts/${id}`, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to update contact');
+    }
+    return response.data;
+  },
+  delete: async (id: string) => {
+    const response = await api.delete<ApiResponse<void>>(`/contacts/${id}`);
+    if (!response.success) {
+      throw new Error(response.error || 'Failed to delete contact');
+    }
+  },
 };
 
 // Audit API
 export const auditApi = {
-  list: (params?: {
+  list: async (params?: {
     page?: number;
     limit?: number;
     entityType?: string;
@@ -286,17 +448,26 @@ export const auditApi = {
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', params.page.toString());
-    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.limit) searchParams.set('pageSize', params.limit.toString());
     if (params?.entityType) searchParams.set('entityType', params.entityType);
     if (params?.action) searchParams.set('action', params.action);
     if (params?.userId) searchParams.set('userId', params.userId);
     if (params?.startDate) searchParams.set('startDate', params.startDate);
     if (params?.endDate) searchParams.set('endDate', params.endDate);
     const query = searchParams.toString();
-    return api.get<{
-      data: unknown[];
-      pagination: { total: number; page: number; limit: number; totalPages: number };
-    }>(`/audit${query ? `?${query}` : ''}`);
+    const response = await api.get<PaginatedApiResponse<unknown>>(`/audit${query ? `?${query}` : ''}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.error || 'Failed to get audit logs');
+    }
+    return {
+      data: response.data.items,
+      pagination: {
+        total: response.data.total,
+        page: response.data.page,
+        limit: response.data.pageSize,
+        totalPages: response.data.totalPages,
+      },
+    };
   },
 };
 
